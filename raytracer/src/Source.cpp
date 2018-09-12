@@ -12,9 +12,10 @@
 #include <thread>
 #include <future>
 #include <memory>
+#include <iomanip>
 #include "material.h"
 #include "world.h"
-#include "scenes/scene1.h"
+#include "scenes/scene2.h"
 
 using namespace std;
 
@@ -66,6 +67,20 @@ void draw_canvas(uint8_t *canvas, const float *img, int ssaa, float gamma, int w
     }
 }
 
+void dump_result(const char *path, const float *img, int ssaa, int w, int h)
+{
+    ofstream file(path);
+
+    file << 0xdeadbeaf << ' ';
+    file << ssaa << ' ';
+    file << w << ' ';
+    file << h << ' ';
+
+    for (int i = 0; i < w * h * 3; ++i) {
+        file << img[i] << ' ';
+    }
+}
+
 void render_session(int w, int h, int SSAA, int thd)
 {
     auto canvas = new unsigned char[w * h * 3];
@@ -104,14 +119,15 @@ void render_session(int w, int h, int SSAA, int thd)
     }
 
     draw_canvas(canvas, result, SSAA, 2, w, h);
+    dump_result("result.dump.txt", result, SSAA, w, h);
     draw_png("result.png", canvas, w, h);
 }
 
 int main()
 {
     while (true) {
-        constexpr int w    = 200;
-        constexpr int h    = 150;
+        constexpr int w    = 400;
+        constexpr int h    = 300;
         constexpr int SSAA = 64;
         constexpr int thd  = 4;
 
