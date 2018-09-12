@@ -5,7 +5,8 @@
 class vec3
 {
 public:
-    vec3(){};
+    vec3()
+        : vec3(0, 0, 0){};
     vec3(float e0, float e1, float e2)
     {
         e[0] = e0;
@@ -64,7 +65,8 @@ public:
     vec3 unit_vector() const
     {
         auto result = *this;
-        result *= 1.f / length();
+        //result *= 1.f / length();
+        result /= length();
         return result;
     }
 
@@ -120,6 +122,15 @@ inline vec3 cross(const vec3 &lhs, const vec3 &rhs)
 {
     return lhs.cross(rhs);
 }
+inline float distance_manhattan(const vec3 &lhs, const vec3 &rhs)
+{
+    auto diff = lhs - rhs;
+    return abs(diff[0]) + abs(diff[1]) + abs(diff[2]);
+}
+inline float distance_euclidean(const vec3 &lhs, const vec3 &rhs)
+{
+    return (lhs - rhs).length();
+}
 
 // Random Generation
 //
@@ -142,4 +153,13 @@ inline float rand_canonical()
 inline float rand_mirror()
 {
     return rand_real(-1.f, 1.f);
+}
+
+inline vec3 random_in_unit_sphere()
+{
+    vec3 p;
+    do {
+        p = vec3(rand_mirror(), rand_mirror(), rand_mirror());
+    } while (dot(p, p) >= 1.0);
+    return p;
 }
