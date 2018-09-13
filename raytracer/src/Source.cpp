@@ -12,8 +12,12 @@
 #include <thread>
 #include <future>
 #include <memory>
+#include <iomanip>
 #include "material.h"
 #include "world.h"
+#include "scenes/scene2.h"
+
+using namespace std;
 
 void draw_png(const char *filename, const uint8_t *img, int w, int h)
 {
@@ -38,36 +42,16 @@ void test_rgb()
     fclose(fp);
 }
 
-vec3 color(const ray &r, world *world, size_t depth)
-{
-    if (depth > 20)
-        return vec3(0, 0, 0);
-
-    hit_record rec;
-    if (world->hit(r, rec)) {
-        vec3 light;
-        if (rec.mat_ptr->emit(r, rec, light))
-            return light;
-
-        ray scattered;
-        vec3 attenation;
-        if (rec.mat_ptr->scatter(r, rec, attenation, scattered))
-            return attenation * color(scattered, world, depth + 1);
-    }
-
-    return vec3(0.2, 0.2, 0.2);
-}
-
 void render_sample(float *workspace, world *world, camera *cam, int w, int h)
 {
     auto p = workspace;
     for (int j = h - 1; j >= 0; j--) {
         for (int i = 0; i < w; i++) {
-            float u = float(i + (rand_mirror() + 1.f) / 2.f) / float(w);
-            float v = float(j + (rand_mirror() + 1.f) / 2.f) / float(h);
+            float u = float(i + rand_canonical()) / float(w);
+            float v = float(j + rand_canonical()) / float(h);
 
             auto ray   = cam->get_ray(u, v);
-            auto pixel = color(ray, world, 0);
+            auto pixel = world->color(ray, 0);
 
             *p++ = pixel.r();
             *p++ = pixel.g();
@@ -79,64 +63,31 @@ void render_sample(float *workspace, world *world, camera *cam, int w, int h)
 void draw_canvas(uint8_t *canvas, const float *img, int ssaa, float gamma, int w, int h)
 {
     for (int i = 0; i < w * h * 3; ++i) {
-        canvas[i] = std::min(255, static_cast<int>(255.f * powf(img[i] / ssaa, 1 / gamma)));
+        canvas[i] = min(255, static_cast<int>(255.f * powf(img[i] / ssaa, 1 / gamma)));
     }
 }
 
-world *create_world()
+void dump_result(const char *path, const float *img, int ssaa, int w, int h)
 {
-    auto w = new world;
+    ofstream file(path);
 
-    // box
+    file << 0xdeadbeaf << ' ';
+    file << ssaa << ' ';
+    file << w << ' ';
+    file << h << ' ';
 
-    w->add_aabb(vec3(-1, 3.9, -1), vec3(1, 6, 1), w->create_lightsrc(vec3(6., 6., 6.)));    // light
-    w->add_aabb(vec3(-6, 4, -6), vec3(6, 6, 6), w->create_lambertian(vec3(.8, .8, .8)));    // top
-    w->add_aabb(vec3(-6, -1, -6), vec3(6, 0, 6), w->create_lambertian(vec3(.8, .8, .8)));   // bottom
-    w->add_aabb(vec3(-6, -1, -6), vec3(6, 10, -5), w->create_lambertian(vec3(.2, .8, .2))); // front
-    w->add_aabb(vec3(-6, -1, 5), vec3(6, 10, 6), w->create_lambertian(vec3(.8, .8, .8)));   // back
-    w->add_aabb(vec3(-4, -1, -6), vec3(-3, 10, 6), w->create_lambertian(vec3(.8, .2, .2))); // left
-    w->add_aabb(vec3(3, -1, -6), vec3(4, 10, 6), w->create_lambertian(vec3(.2, .2, .8)));   // right
-
-    //w->add_sphere(1e5, vec3(0, 1e5 + 5, 0), w->create_lightsrc(vec3(1., 1., 1.)));     // top
-    //w->add_sphere(1e5, vec3(0, -1e5 - .5, -1), w->create_lambertian(vec3(.8, .8, .8))); // bottom
-    //w->add_sphere(1e5, vec3(0, 0, -1e5 - 5), w->create_lambertian(vec3(.2, .8, .2)));   // front
-    //w->add_sphere(1e5, vec3(0, 0, 1e5 + 5), w->create_lambertian(vec3(.8, .8, .8)));    // back
-    //w->add_sphere(1e5, vec3(-1e5 - 3, 0, 0), w->create_lambertian(vec3(.8, .2, .2)));   // left
-    //w->add_sphere(1e5, vec3(1e5 + 3, 0, 0), w->create_lambertian(vec3(.2, .2, .8)));    // right
-
-    // balls
-    //w->add_sphere(.5, vec3(1, 0, -1), w->create_dielectric(0.3));
-    //w->add_sphere(1, vec3(1, 1, -1), w->create_lambertian(vec3(.7, .3, .5)));
-    //w->add_sphere(1, vec3(-1, 1, -1), w->create_metal(vec3(.8, .8, .0), 0.6));
-    
-    w->add_sphere(0.5, vec3(-2, 0.5, -1), w->create_dielectric(0.3));
-    w->add_aabb(vec3(-1.5, 0, -3), vec3(-0.5, 2, -2), w->create_lambertian(vec3(.3, .3, .6)));
-    w->add_aabb(vec3(1, 0, -1.5), vec3(2, 1, -0.5), w->create_lambertian(vec3(.5, .2, .4)));
-
-    return w;
+    for (int i = 0; i < w * h * 3; ++i) {
+        file << img[i] << ' ';
+    }
 }
 
-world *create_cornell_box() // modified version
+void render_session(int w, int h, int SSAA, int thd)
 {
-    auto w = new world;
-
-    throw;
-}
-
-void first_projection()
-{
-    // Screen size and a screen buffers
-    constexpr int w    = 400;
-    constexpr int h    = 300;
-    constexpr int SSAA = 6000;
-    constexpr int thd  = 6;
-    static_assert(SSAA % thd == 0, "jobs must be evenly sliced!");
-
     auto canvas = new unsigned char[w * h * 3];
-    auto cam    = new camera(vec3(0, 2, 3), vec3(0, 2, -1), vec3(0, 1, 0), 4, 3, 3);
     auto world  = create_world();
+    auto cam    = create_camera();
 
-    std::vector<std::future<float *>> future_vec;
+    vector<future<float *>> future_vec;
     for (int i = 0; i < thd; ++i) {
         auto future = std::async(std::launch::async, [=]() {
             auto buffer    = new float[w * h * 3]{};
@@ -154,7 +105,7 @@ void first_projection()
             return buffer;
         });
 
-        future_vec.push_back(std::move(future));
+        future_vec.push_back(move(future));
     }
 
     auto result = new float[w * h * 3]{};
@@ -168,11 +119,26 @@ void first_projection()
     }
 
     draw_canvas(canvas, result, SSAA, 2, w, h);
+    dump_result("result.dump.txt", result, SSAA, w, h);
     draw_png("result.png", canvas, w, h);
 }
 
 int main()
 {
-    first_projection();
-    return 0;
+    while (true) {
+        constexpr int w    = 400;
+        constexpr int h    = 300;
+        constexpr int SSAA = 64;
+        constexpr int thd  = 4;
+
+        static_assert(SSAA % thd == 0, "jobs must be evenly sliced!");
+
+        printf("enter width of your canvas(default is %d):\n", w);
+        printf("enter height of your canvas(default is %d):\n", h);
+        printf("enter SSAA of rendering process(default is %d):\n", SSAA);
+        printf("enter number of threads to render(default is %d):\n", thd);
+
+        render_session(w, h, SSAA, thd);
+        return 0;
+    }
 }
